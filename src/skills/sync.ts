@@ -106,21 +106,8 @@ export async function runSkillsSync(): Promise<void> {
   const hasClawdhub = existsSync(CLAWDHUB_DIR) && skills.some(s => s.source === 'clawdhub');
   const hasVercel = existsSync(VERCEL_DIR) && skills.some(s => s.source === 'vercel');
   
-  // Build options grouped by source with headers
+  // Build options grouped by source with headers (order: ClawdHub, Vercel, Built-in)
   const options: Array<{ value: string; label: string; hint: string }> = [];
-  
-  // Add built-in skills section
-  if (hasBuiltin) {
-    options.push({ value: '__header_builtin__', label: '── Built-in Skills ──', hint: '' });
-    for (const skill of skills.filter(s => s.source === 'builtin')) {
-      const desc = skill.description || '';
-      options.push({
-        value: skill.name,
-        label: `📦 ${skill.name}`,
-        hint: desc.length > 60 ? desc.slice(0, 57) + '...' : desc,
-      });
-    }
-  }
   
   // Add ClawdHub skills section
   if (hasClawdhub) {
@@ -143,6 +130,19 @@ export async function runSkillsSync(): Promise<void> {
       options.push({
         value: skill.name,
         label: `🔼 ${skill.name}`,
+        hint: desc.length > 60 ? desc.slice(0, 57) + '...' : desc,
+      });
+    }
+  }
+  
+  // Add built-in skills section
+  if (hasBuiltin) {
+    options.push({ value: '__header_builtin__', label: '── Built-in Skills ──', hint: '' });
+    for (const skill of skills.filter(s => s.source === 'builtin')) {
+      const desc = skill.description || '';
+      options.push({
+        value: skill.name,
+        label: `📦 ${skill.name}`,
         hint: desc.length > 60 ? desc.slice(0, 57) + '...' : desc,
       });
     }
