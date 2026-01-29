@@ -73,32 +73,20 @@ export function getDefaultModelForTier(billingTier?: string | null): string {
   return defaultModel?.handle ?? models[0]?.handle ?? 'anthropic/claude-sonnet-4-5-20250929';
 }
 
-// Map provider IDs to model handle prefixes
-const PROVIDER_TO_MODEL_PREFIX: Record<string, string[]> = {
-  'anthropic': ['anthropic/'],
-  'openai': ['openai/'],
-  'gemini': ['google_ai/'],
-  'zai': ['zai/'],
-  'minimax': ['minimax/'],
-  'openrouter': ['openrouter/'],
-};
-
 /**
- * Build model selection options based on billing tier and connected providers
+ * Build model selection options based on billing tier
  * Returns array ready for @clack/prompts select()
  * 
- * For free users: Show free models first, then connected BYOK models
+ * For free users: Show free models first, then all BYOK models
  * For paid users: Show featured models first, then all models
  * For self-hosted: Fetch models from server
  */
 export async function buildModelOptions(options?: {
   billingTier?: string | null;
   isSelfHosted?: boolean;
-  connectedProviders?: string[]; // Provider IDs like 'anthropic', 'minimax'
 }): Promise<Array<{ value: string; label: string; hint: string }>> {
   const billingTier = options?.billingTier;
   const isSelfHosted = options?.isSelfHosted;
-  const connectedProviders = options?.connectedProviders || [];
   const isFreeTier = billingTier?.toLowerCase() === 'free';
   
   // For self-hosted servers, fetch models from server
@@ -107,14 +95,6 @@ export async function buildModelOptions(options?: {
   }
   
   const result: Array<{ value: string; label: string; hint: string }> = [];
-  
-  // Helper to check if a model is from a connected provider
-  const isFromConnectedProvider = (handle: string) => {
-    return connectedProviders.some(providerId => {
-      const prefixes = PROVIDER_TO_MODEL_PREFIX[providerId] || [];
-      return prefixes.some(prefix => handle.startsWith(prefix));
-    });
-  };
   
   if (isFreeTier) {
     // Free tier: Show free models first
@@ -125,22 +105,20 @@ export async function buildModelOptions(options?: {
       hint: `🆓 Free - ${m.description}`,
     })));
     
-    // If user has connected providers, show their models
-    if (connectedProviders.length > 0) {
-      result.push({
-        value: '__byok_header__',
-        label: '── Your Connected Providers ──',
-        hint: 'Models from your API keys',
-      });
-      
-      // Show models from connected providers only
-      const connectedModels = models.filter(m => !m.free && isFromConnectedProvider(m.handle));
-      result.push(...connectedModels.map(m => ({
-        value: m.handle,
-        label: m.label,
-        hint: `🔑 ${m.description}`,
-      })));
-    }
+    // Show all BYOK models
+    result.push({
+      value: '__byok_header__',
+      label: '── BYOK Models ──',
+      hint: 'Requires provider API key',
+    });
+    
+    // Show all non-free models as BYOK options
+    const byokModels = models.filter(m => !m.free);
+    result.push(...byokModels.map(m => ({
+      value: m.handle,
+      label: m.label,
+      hint: `🔑 ${m.description}`,
+    })));
   } else {
     // Paid tier: Show featured models first
     const featured = models.filter(m => m.isFeatured);
