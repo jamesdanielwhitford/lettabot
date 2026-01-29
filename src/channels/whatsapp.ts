@@ -297,7 +297,8 @@ Ask the bot owner to approve with:
         }
         
         if (this.onMessage) {
-          await this.onMessage({
+          // Don't await - let messages queue up independently
+          this.onMessage({
             channel: 'whatsapp',
             chatId: remoteJid,
             userId,
@@ -307,7 +308,7 @@ Ask the bot owner to approve with:
             isGroup,
             // Group name would require additional API call to get chat metadata
             // For now, we don't have it readily available from the message
-          });
+          }).catch(err => console.error('[WhatsApp] Error handling message:', err));
         }
       }
     });

@@ -67,7 +67,8 @@ export class SlackAdapter implements ChannelAdapter {
         // DMs have channel IDs starting with 'D', channels start with 'C'
         const isGroup = !channelId.startsWith('D');
         
-        await this.onMessage({
+        // Don't await - let messages queue up independently
+        this.onMessage({
           channel: 'slack',
           chatId: channelId,
           userId: userId || '',
@@ -77,7 +78,7 @@ export class SlackAdapter implements ChannelAdapter {
           threadId: threadTs,
           isGroup,
           groupName: isGroup ? channelId : undefined,  // Would need conversations.info for name
-        });
+        }).catch(err => console.error('[Slack] Error handling message:', err));
       }
     });
     
@@ -99,7 +100,8 @@ export class SlackAdapter implements ChannelAdapter {
         // app_mention is always in a channel (group)
         const isGroup = !channelId.startsWith('D');
         
-        await this.onMessage({
+        // Don't await - let messages queue up independently
+        this.onMessage({
           channel: 'slack',
           chatId: channelId,
           userId: userId || '',
@@ -109,7 +111,7 @@ export class SlackAdapter implements ChannelAdapter {
           threadId: threadTs,
           isGroup,
           groupName: isGroup ? channelId : undefined,
-        });
+        }).catch(err => console.error('[Slack] Error handling mention:', err));
       }
     });
     

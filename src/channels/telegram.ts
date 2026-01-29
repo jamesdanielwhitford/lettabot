@@ -147,7 +147,7 @@ export class TelegramAdapter implements ChannelAdapter {
     });
     
     // Handle text messages
-    this.bot.on('message:text', async (ctx) => {
+    this.bot.on('message:text', (ctx) => {
       const userId = ctx.from?.id;
       const chatId = ctx.chat.id;
       const text = ctx.message.text;
@@ -156,13 +156,17 @@ export class TelegramAdapter implements ChannelAdapter {
       if (text.startsWith('/')) return;  // Skip other commands
       
       if (this.onMessage) {
-        await this.onMessage({
+        // Don't await - let messages queue up independently
+        // The bot's message queue handles sequential processing
+        this.onMessage({
           channel: 'telegram',
           chatId: String(chatId),
           userId: String(userId),
           userName: ctx.from.username || ctx.from.first_name,
           text,
           timestamp: new Date(),
+        }).catch(err => {
+          console.error('[Telegram] Error handling message:', err);
         });
       }
     });
