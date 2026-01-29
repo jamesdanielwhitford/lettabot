@@ -7,16 +7,7 @@
 
 import type { InboundMessage } from './types.js';
 
-/**
- * Channel format hints - tells the agent what formatting syntax to use
- * Each channel has different markdown support - hints help agent format appropriately.
- */
-const CHANNEL_FORMATS: Record<string, string> = {
-  slack: 'mrkdwn: bold/italic/code/links - NO: headers, tables',
-  telegram: 'MarkdownV2: bold/italic/code/links/quotes - NO: headers, tables',
-  whatsapp: 'bold/italic/code - NO: headers, code fences, links, tables',
-  signal: 'ONLY: bold/italic/code - NO: headers, code fences, links, quotes, tables',
-};
+
 
 export interface EnvelopeOptions {
   timezone?: 'local' | 'utc' | string;  // IANA timezone or 'local'/'utc'
@@ -179,9 +170,5 @@ export function formatMessageEnvelope(
   // Build envelope
   const envelope = `[${parts.join(' ')}]`;
   
-  // Add format hint as a separate note (not cluttering the main envelope)
-  const formatHint = CHANNEL_FORMATS[msg.channel];
-  const hint = formatHint ? `\n(Format: ${formatHint})` : '';
-  
-  return `${envelope} ${msg.text}${hint}`;
+  return `${envelope} ${msg.text}`;
 }
