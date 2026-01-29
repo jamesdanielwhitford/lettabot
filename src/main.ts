@@ -11,6 +11,16 @@ import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 
+// Load YAML config and apply to process.env (before other imports)
+import { loadConfig, applyConfigToEnv, syncProviders, resolveConfigPath } from './config/index.js';
+const yamlConfig = loadConfig();
+console.log(`[Config] Loaded from ${resolveConfigPath()}`);
+console.log(`[Config] Mode: ${yamlConfig.server.mode}, Agent: ${yamlConfig.agent.name}, Model: ${yamlConfig.agent.model}`);
+applyConfigToEnv(yamlConfig);
+
+// Sync BYOK providers on startup (async, don't block)
+syncProviders(yamlConfig).catch(err => console.error('[Config] Failed to sync providers:', err));
+
 // Load agent ID from store and set as env var (SDK needs this)
 // Load agent ID from store file, or use LETTA_AGENT_ID env var as fallback
 const STORE_PATH = resolve(process.cwd(), 'lettabot-agent.json');
