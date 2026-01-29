@@ -120,6 +120,7 @@ export class LettaBot {
     
     // Add to queue
     this.messageQueue.push({ msg, adapter });
+    console.log(`[Queue] Added message, queue size: ${this.messageQueue.length}, processing: ${this.processing}`);
     
     // Process queue if not already processing
     if (!this.processing) {
@@ -134,17 +135,21 @@ export class LettaBot {
     if (this.processing || this.messageQueue.length === 0) return;
     
     this.processing = true;
+    console.log(`[Queue] Starting to process, queue size: ${this.messageQueue.length}`);
     
     while (this.messageQueue.length > 0) {
       const { msg, adapter } = this.messageQueue.shift()!;
+      console.log(`[Queue] Processing message from ${msg.userId}: "${msg.text.slice(0, 50)}..."`);
       try {
         await this.processMessage(msg, adapter);
       } catch (error) {
         console.error('[Queue] Error processing message:', error);
       }
+      console.log(`[Queue] Finished processing, remaining in queue: ${this.messageQueue.length}`);
     }
     
     this.processing = false;
+    console.log(`[Queue] Done processing all messages`);
   }
   
   /**
