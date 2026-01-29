@@ -16,8 +16,9 @@ const ENV_EXAMPLE_PATH = resolve(process.cwd(), '.env.example');
 
 interface OnboardConfig {
   // Auth
-  authMethod: 'keep' | 'oauth' | 'apikey' | 'skip';
+  authMethod: 'keep' | 'oauth' | 'apikey' | 'selfhosted' | 'skip';
   apiKey?: string;
+  baseUrl?: string;
   
   // Agent  
   agentChoice: 'new' | 'existing' | 'env' | 'skip';
@@ -123,7 +124,8 @@ async function stepAuth(config: OnboardConfig, env: Record<string, string>): Pro
     ...(hasExistingAuth ? [{ value: 'keep', label: getAuthLabel(), hint: displayKey?.slice(0, 20) + '...' }] : []),
     ...(isLettaCloud ? [{ value: 'oauth', label: 'Login to Letta Platform', hint: 'Opens browser' }] : []),
     { value: 'apikey', label: 'Enter API Key manually', hint: 'Paste your key' },
-    { value: 'skip', label: 'Skip', hint: 'Local server without auth' },
+    { value: 'selfhosted', label: 'Enter self-hosted URL', hint: 'Local Letta server' },
+    { value: 'skip', label: 'Skip', hint: 'Continue without auth' },
   ];
   
   const authMethod = await p.select({
@@ -194,6 +196,22 @@ async function stepAuth(config: OnboardConfig, env: Record<string, string>): Pro
       config.apiKey = apiKey;
       env.LETTA_API_KEY = apiKey;
     }
+  } else if (authMethod === 'selfhosted') {
+    const serverUrl = await p.text({ 
+      message: 'Letta server URL',
+      placeholder: 'http://localhost:8283',
+      initialValue: 'http://localhost:8283',
+    });
+    if (p.isCancel(serverUrl)) { p.cancel('Setup cancelled'); process.exit(0); }
+    
+    const url = serverUrl || 'http://localhost:8283';
+    config.baseUrl = url;
+    env.LETTA_BASE_URL = url;
+    process.env.LETTA_BASE_URL = url; // Set immediately so model listing works
+    
+    // Clear any cloud API key since we're using self-hosted
+    delete env.LETTA_API_KEY;
+    delete process.env.LETTA_API_KEY;
   } else if (authMethod === 'keep') {
     // For OAuth tokens, refresh if needed
     if (existingTokens?.refreshToken) {
@@ -238,7 +256,7 @@ async function stepAuth(config: OnboardConfig, env: Record<string, string>): Pro
     }
   }
   
-  // Validate connection (only if not skipping auth)
+  // Validate connection (skip if 'skip' was chosen)
   if (config.authMethod !== 'skip') {
     const keyToValidate = config.apiKey || env.LETTA_API_KEY;
     if (keyToValidate) {
@@ -246,11 +264,16 @@ async function stepAuth(config: OnboardConfig, env: Record<string, string>): Pro
     }
     
     const spinner = p.spinner();
-    spinner.start('Checking connection...');
+    const serverLabel = config.baseUrl || 'Letta Cloud';
+    spinner.start(`Checking connection to ${serverLabel}...`);
     try {
       const { testConnection } = await import('./tools/letta-api.js');
       const ok = await testConnection();
-      spinner.stop(ok ? 'Connected to server' : 'Connection issue');
+      spinner.stop(ok ? `Connected to ${serverLabel}` : 'Connection issue');
+      
+      if (!ok && config.authMethod === 'selfhosted') {
+        p.log.warn(`Could not connect to ${config.baseUrl}. Make sure the server is running.`);
+      }
     } catch {
       spinner.stop('Connection check skipped');
     }
@@ -623,7 +646,8 @@ function showSummary(config: OnboardConfig): void {
     keep: 'Keep existing',
     oauth: 'OAuth login',
     apikey: config.apiKey ? `API Key (${config.apiKey.slice(0, 10)}...)` : 'API Key',
-    skip: 'None (local server)',
+    selfhosted: config.baseUrl ? `Self-hosted (${config.baseUrl})` : 'Self-hosted',
+    skip: 'None',
   }[config.authMethod];
   lines.push(`Auth:      ${authLabel}`);
   
