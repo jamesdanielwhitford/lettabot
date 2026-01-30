@@ -173,52 +173,20 @@ export class LettaBot {
       systemPrompt: SYSTEM_PROMPT,
     };
     
-    console.log('[Bot] Session options:', JSON.stringify(baseOptions, null, 2));
+
     
     try {
       if (this.store.agentId) {
         process.env.LETTA_AGENT_ID = this.store.agentId;
-        console.log(`[Bot] Resuming session for agent ${this.store.agentId}`);
-        console.log(`[Bot] LETTA_BASE_URL=${process.env.LETTA_BASE_URL}`);
-        console.log(`[Bot] LETTA_API_KEY=${process.env.LETTA_API_KEY ? '(set)' : '(not set)'}`);
         // Don't pass model when resuming - agent already has its model configured
         session = resumeSession(this.store.agentId, baseOptions);
       } else {
-        console.log('[Bot] Creating new session');
         // Only pass model when creating a new agent
         session = createSession({ ...baseOptions, model: this.config.model, memory: loadMemoryBlocks(this.config.agentName) });
       }
-      console.log(`[Bot] Session object:`, Object.keys(session));
-      console.log(`[Bot] Session initialized:`, (session as any).initialized);
-      console.log(`[Bot] Session _agentId:`, (session as any)._agentId);
-      console.log(`[Bot] Session options.permissionMode:`, (session as any).options?.permissionMode);
       
-      // Hook into transport errors and stdout
-      const transport = (session as any).transport;
-      if (transport?.process) {
-        console.log('[Bot] Transport process PID:', transport.process.pid);
-        transport.process.stdout?.on('data', (data: Buffer) => {
-          console.log('[Bot] CLI stdout:', data.toString().slice(0, 500));
-        });
-        transport.process.stderr?.on('data', (data: Buffer) => {
-          console.error('[Bot] CLI stderr:', data.toString());
-        });
-        transport.process.on('exit', (code: number) => {
-          console.log('[Bot] CLI process exited with code:', code);
-        });
-        transport.process.on('error', (err: Error) => {
-          console.error('[Bot] CLI process error:', err);
-        });
-      } else {
-        console.log('[Bot] No transport process found');
-      }
-      
-      // Initialize session explicitly (so we can log timing/failures)
-      console.log('[Bot] About to initialize session...');
-      console.log('[Bot] LETTA_API_KEY in env:', process.env.LETTA_API_KEY ? `${process.env.LETTA_API_KEY.slice(0, 30)}...` : 'NOT SET');
-      console.log('[Bot] LETTA_CLI_PATH:', process.env.LETTA_CLI_PATH || 'not set (will use default)');
-      
-      const initTimeoutMs = 30000; // Increased to 30s
+      // Initialize session with timeout
+      const initTimeoutMs = 30000;
       const withTimeout = async <T>(promise: Promise<T>, label: string): Promise<T> => {
         let timeoutId: NodeJS.Timeout;
         const timeoutPromise = new Promise<T>((_, reject) => {
@@ -233,20 +201,14 @@ export class LettaBot {
         }
       };
 
-      console.log('[Bot] Initializing session...');
       const initInfo = await withTimeout(session.initialize(), 'Session initialize');
       console.log('[Bot] Session initialized:', initInfo);
 
       // Send message to agent with metadata envelope
       const formattedMessage = formatMessageEnvelope(msg);
-      console.log('[Bot] Formatted message:', formattedMessage.slice(0, 200));
-      console.log('[Bot] Target server:', process.env.LETTA_BASE_URL || 'https://api.letta.com (default)');
-      console.log('[Bot] API key:', process.env.LETTA_API_KEY ? `${process.env.LETTA_API_KEY.slice(0, 20)}...` : '(not set)');
-      console.log('[Bot] Agent ID:', this.store.agentId || '(new agent)');
-      console.log('[Bot] Sending message to session...');
+      console.log(`[Bot] Formatted message: ${formattedMessage.slice(0, 200)}`);
       try {
         await withTimeout(session.send(formattedMessage), 'Session send');
-        console.log('[Bot] Message sent successfully, starting stream...');
       } catch (sendError) {
         console.error('[Bot] Error in session.send():', sendError);
         throw sendError;
@@ -256,6 +218,7 @@ export class LettaBot {
       let response = '';
       let lastUpdate = Date.now();
       let messageId: string | null = null;
+      let sentAnyMessage = false; // Track if we've sent at least one message
       
       // Keep typing indicator alive
       const typingInterval = setInterval(() => {
@@ -264,6 +227,27 @@ export class LettaBot {
       
       try {
         for await (const streamMsg of session.stream()) {
+          // When a tool is called, finalize current message and start fresh for next turn
+          if (streamMsg.type === 'tool_call') {
+            if (response.length > 0) {
+              // Send/finalize the current message before tool execution
+              try {
+                if (messageId) {
+                  await adapter.editMessage(msg.chatId, messageId, response);
+                } else {
+                  await adapter.sendMessage({ chatId: msg.chatId, text: response, threadId: msg.threadId });
+                }
+                sentAnyMessage = true;
+              } catch {
+                // Ignore send errors
+              }
+              // Reset for next turn - new message bubble
+              response = '';
+              messageId = null;
+              lastUpdate = Date.now();
+            }
+          }
+          
           if (streamMsg.type === 'assistant') {
             response += streamMsg.content;
             
@@ -329,7 +313,8 @@ export class LettaBot {
             await adapter.sendMessage({ chatId: msg.chatId, text: response, threadId: msg.threadId });
           }
         }
-      } else {
+      } else if (!sentAnyMessage) {
+        // Only show "no response" if we haven't sent any messages at all
         console.log('[Bot] No response from agent, sending placeholder');
         await adapter.sendMessage({ chatId: msg.chatId, text: '(No response from agent)', threadId: msg.threadId });
       }
@@ -385,8 +370,19 @@ export class LettaBot {
       await session.send(text);
       
       let response = '';
+      let hadToolCall = false;
       for await (const msg of session.stream()) {
+        // Track tool calls to know when to add separators between assistant turns
+        if (msg.type === 'tool_call' || msg.type === 'tool_result') {
+          hadToolCall = true;
+        }
+        
         if (msg.type === 'assistant') {
+          // Add separator between assistant turns (after tool calls)
+          if (hadToolCall && response.length > 0) {
+            response += '\n\n';
+            hadToolCall = false;
+          }
           response += msg.content;
         }
         
