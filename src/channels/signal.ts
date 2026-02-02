@@ -547,7 +547,12 @@ This code expires in 1 hour.`;
         }
       }
       
-      // After processing attachments, check if we have any message content
+      // After processing attachments, check if we have any message content.
+      // If this was a voice-only message and transcription failed/was disabled,
+      // still forward a placeholder so the user knows we got it.
+      if (!messageText && voiceAttachment?.id) {
+        messageText = '[Voice message received]';
+      }
       if (!messageText) {
         return;
       }
