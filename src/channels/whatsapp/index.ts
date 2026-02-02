@@ -554,15 +554,33 @@ export class WhatsAppAdapter implements ChannelAdapter {
     const { type, messages } = data;
     this.lastMessageTime = new Date(); // Update for watchdog
 
-    // Only process "notify" (new messages), skip "append" (historical backfill)
+    // For "append" (history sync), only process recent messages (last 5 minutes)
+    // This catches messages that arrived while bot was briefly offline
+    const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+    const now = Date.now();
+    
+    let messagesToProcess = messages;
+    
     if (type !== "notify") {
-      if (messages.length > 0) {
-        console.log(`[WhatsApp] Skipping ${messages.length} historical message(s) (type: ${type})`);
+      messagesToProcess = messages.filter((m) => {
+        const ts = m.messageTimestamp;
+        if (!ts) return false;
+        const messageTime = typeof ts === "number" ? ts * 1000 : Number(ts) * 1000;
+        return now - messageTime < MAX_AGE_MS;
+      });
+      
+      const skipped = messages.length - messagesToProcess.length;
+      if (skipped > 0) {
+        console.log(`[WhatsApp] Skipping ${skipped} old historical message(s) (type: ${type})`);
       }
-      return;
+      if (messagesToProcess.length > 0) {
+        console.log(`[WhatsApp] Processing ${messagesToProcess.length} recent message(s) from history sync`);
+      }
+      
+      if (messagesToProcess.length === 0) return;
     }
 
-    for (const m of messages) {
+    for (const m of messagesToProcess) {
       const messageId = m.key.id || "";
       const remoteJid = m.key.remoteJid || "";
 
