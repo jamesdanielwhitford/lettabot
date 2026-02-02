@@ -55,6 +55,12 @@ export interface InboundAttachment {
   kind?: 'image' | 'file' | 'audio' | 'video';
 }
 
+export interface InboundReaction {
+  emoji: string;
+  messageId: string;
+  action?: 'added' | 'removed';
+}
+
 /**
  * Inbound message from any channel
  */
@@ -73,6 +79,7 @@ export interface InboundMessage {
   wasMentioned?: boolean; // Was bot explicitly mentioned? (groups only)
   replyToUser?: string;   // Phone number of who they're replying to (if reply)
   attachments?: InboundAttachment[];
+  reaction?: InboundReaction;
 }
 
 /**
