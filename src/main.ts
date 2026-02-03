@@ -344,6 +344,8 @@ async function main() {
     if (!exists) {
       console.log(`[Agent] Stored agent ${initialStatus.agentId} not found on server`);
       bot.reset();
+      // Also clear env var so search-by-name can run
+      delete process.env.LETTA_AGENT_ID;
       initialStatus = bot.getStatus();
     }
   }
