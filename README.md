@@ -4,6 +4,8 @@ Your personal AI assistant that remembers everything across **Telegram, Slack, D
 
 <img width="750" alt="lettabot-preview" src="https://github.com/user-attachments/assets/9f01b845-d5b0-447b-927d-ae15f9ec7511" />
 
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/lettabot)
+
 ## Features
 
 - **Multi-Channel** - Chat seamlessly across Telegram, Slack, Discord, WhatsApp, and Signal

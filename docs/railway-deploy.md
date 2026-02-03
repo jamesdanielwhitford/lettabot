@@ -102,8 +102,10 @@ Check Railway logs for startup errors. Common issues:
 
 ## Deploy Button
 
-Add this to your README to enable one-click deploys:
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/lettabot)
+
+Or add to your README:
 
 ```markdown
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/YOUR_TEMPLATE_ID)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/lettabot)
 ```
