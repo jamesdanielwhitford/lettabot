@@ -14,6 +14,7 @@ import { installSkillsToAgent } from '../skills/loader.js';
 import { formatMessageEnvelope } from './formatter.js';
 import { loadMemoryBlocks } from './memory.js';
 import { SYSTEM_PROMPT } from './system-prompt.js';
+import { StreamWatchdog } from './stream-watchdog.js';
 
 export class LettaBot {
   private store: Store;
@@ -232,43 +233,22 @@ export class LettaBot {
           clearTimeout(timeoutId!);
         }
       };
-      type InitInfo = Awaited<ReturnType<Session['initialize']>>;
-      const initializeSession = async (target: Session, label: string): Promise<InitInfo> => {
-        let closedTimer: NodeJS.Timeout | null = null;
-        const closedPromise = new Promise<never>((_, reject) => {
-          closedTimer = setInterval(() => {
-            const transport = (target as any).transport;
-            if (transport?.isClosed) {
-              reject(new Error('Session transport closed before init'));
-            }
-          }, 200);
-        });
-        try {
-          return await withTimeout(Promise.race([target.initialize(), closedPromise]), label);
-        } finally {
-          if (closedTimer) {
-            clearInterval(closedTimer);
-            closedTimer = null;
-          }
-        }
-      };
-
-      let initInfo: InitInfo;
+      let initInfo;
       try {
-        initInfo = await initializeSession(session, 'Session initialize');
+        initInfo = await withTimeout(session.initialize(), 'Session initialize');
       } catch (error) {
         if (usedSpecificConversation && this.store.agentId) {
           console.warn('[Bot] Conversation missing, creating a new conversation...');
           session.close();
           session = createSession(this.store.agentId, baseOptions);
-          initInfo = await initializeSession(session, 'Session initialize (new conversation)');
+          initInfo = await withTimeout(session.initialize(), 'Session initialize (new conversation)');
           usedSpecificConversation = false;
           usedDefaultConversation = false;
         } else if (usedDefaultConversation && this.store.agentId) {
           console.warn('[Bot] Default conversation missing, creating a new conversation...');
           session.close();
           session = createSession(this.store.agentId, baseOptions);
-          initInfo = await initializeSession(session, 'Session initialize (new conversation)');
+          initInfo = await withTimeout(session.initialize(), 'Session initialize (new conversation)');
           usedDefaultConversation = false;
         } else {
           throw error;
@@ -295,23 +275,10 @@ export class LettaBot {
       let lastMsgType: string | null = null;
       let lastAssistantUuid: string | null = null;
       let sentAnyMessage = false;
-      const defaultStreamIdleMs = 60000;
-      const envStreamIdleMs = Number(process.env.LETTA_STREAM_IDLE_TIMEOUT_MS);
-      const streamIdleMs = Number.isFinite(envStreamIdleMs) && envStreamIdleMs > 0
-        ? envStreamIdleMs
-        : defaultStreamIdleMs;
-      let idleTimer: NodeJS.Timeout | null = null;
-      let streamAborted = false;
-      const streamStart = Date.now();
-      let lastStreamChunk = streamStart;
-      const streamLogIntervalMs = 10000;
-      const resetIdleTimer = () => {
-        if (!streamIdleMs) return;
-        if (idleTimer) clearTimeout(idleTimer);
-        idleTimer = setTimeout(() => {
-          if (streamAborted) return;
-          streamAborted = true;
-          console.warn(`[Bot] Stream idle timeout after ${streamIdleMs}ms, aborting session...`);
+      
+      // Stream watchdog - abort if idle for too long
+      const watchdog = new StreamWatchdog({
+        onAbort: () => {
           session.abort().catch((err) => {
             console.error('[Bot] Stream abort failed:', err);
           });
@@ -320,19 +287,9 @@ export class LettaBot {
           } catch (err) {
             console.error('[Bot] Stream close failed:', err);
           }
-        }, streamIdleMs);
-      };
-      resetIdleTimer();
-      const streamLogTimer = setInterval(() => {
-        const now = Date.now();
-        const idleMs = now - lastStreamChunk;
-        if (idleMs >= streamLogIntervalMs) {
-          console.log('[Bot] Stream waiting', {
-            elapsedMs: now - streamStart,
-            idleMs,
-          });
-        }
-      }, streamLogIntervalMs);
+        },
+      });
+      watchdog.start();
       
       // Helper to finalize and send current accumulated response
       const finalizeMessage = async () => {
@@ -364,10 +321,7 @@ export class LettaBot {
       try {
         for await (const streamMsg of session.stream()) {
           const msgUuid = (streamMsg as any).uuid;
-          const now = Date.now();
-          const idleMs = now - lastStreamChunk;
-          lastStreamChunk = now;
-          resetIdleTimer();
+          watchdog.ping();
           
           // When message type changes, finalize the current message
           // This ensures different message types appear as separate bubbles
@@ -441,11 +395,7 @@ export class LettaBot {
 
         }
       } finally {
-        if (idleTimer) {
-          clearTimeout(idleTimer);
-          idleTimer = null;
-        }
-        clearInterval(streamLogTimer);
+        watchdog.stop();
         clearInterval(typingInterval);
       }
       
