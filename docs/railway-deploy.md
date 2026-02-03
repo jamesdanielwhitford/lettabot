@@ -44,7 +44,7 @@ SLACK_APP_TOKEN=xapp-...
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AGENT_NAME` | `LettaBot` | Agent name (used to find/create agent) |
-| `MODEL` | `claude-sonnet-4-20250514` | Model to use |
+| `MODEL` | `zai/glm-4.7` | Model for new agents (ignored for existing agents) |
 | `LETTA_AGENT_ID` | - | Override auto-discovery with specific agent ID |
 | `CRON_ENABLED` | `false` | Enable cron jobs |
 | `HEARTBEAT_INTERVAL_MIN` | - | Enable heartbeats (minutes) |
