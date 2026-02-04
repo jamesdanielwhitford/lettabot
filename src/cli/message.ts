@@ -159,10 +159,73 @@ async function sendSignal(chatId: string, text: string): Promise<void> {
   console.log(`✓ Sent to signal:${chatId}`);
 }
 
+/**
+ * Send message or file via API (unified multipart endpoint)
+ */
+async function sendViaApi(
+  channel: string,
+  chatId: string,
+  options: {
+    text?: string;
+    filePath?: string;
+    kind?: 'image' | 'file';
+  }
+): Promise<void> {
+  const apiUrl = process.env.LETTABOT_API_URL || 'http://localhost:8080';
+  const apiKey = process.env.LETTABOT_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('LETTABOT_API_KEY not set. Check bot server logs for the key.');
+  }
+
+  // Check if file exists
+  if (options.filePath && !existsSync(options.filePath)) {
+    throw new Error(`File not found: ${options.filePath}`);
+  }
+
+  // Everything uses multipart now (Option B)
+  const formData = new FormData();
+  formData.append('channel', channel);
+  formData.append('chatId', chatId);
+
+  if (options.text) {
+    formData.append('text', options.text);
+  }
+
+  if (options.filePath) {
+    const fileContent = readFileSync(options.filePath);
+    const fileName = options.filePath.split('/').pop() || 'file';
+    formData.append('file', new Blob([fileContent]), fileName);
+  }
+
+  if (options.kind) {
+    formData.append('kind', options.kind);
+  }
+
+  const response = await fetch(`${apiUrl}/api/v1/messages`, {
+    method: 'POST',
+    headers: {
+      'X-Api-Key': apiKey,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`API error (${response.status}): ${error}`);
+  }
+
+  const result = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Unknown error');
+  }
+
+  const type = options.filePath ? 'file' : 'message';
+  console.log(`✓ Sent ${type} to ${channel}:${chatId}`);
+}
+
 async function sendWhatsApp(chatId: string, text: string): Promise<void> {
-  // WhatsApp requires a running session, so we write to a queue file
-  // that the bot process picks up. For now, error out.
-  throw new Error('WhatsApp sending via CLI not yet supported (requires active session)');
+  return sendViaApi('whatsapp', chatId, { text });
 }
 
 async function sendDiscord(chatId: string, text: string): Promise<void> {
@@ -209,18 +272,25 @@ async function sendToChannel(channel: string, chatId: string, text: string): Pro
 // Command handlers
 async function sendCommand(args: string[]): Promise<void> {
   let text = '';
+  let filePath = '';
+  let kind: 'image' | 'file' | undefined = undefined;
   let channel = '';
   let chatId = '';
-  
+
   // Parse args
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     const next = args[i + 1];
-    
+
     if ((arg === '--text' || arg === '-t') && next) {
       text = next;
       i++;
-    } else if ((arg === '--channel' || arg === '-c') && next) {
+    } else if ((arg === '--file' || arg === '-f') && next) {
+      filePath = next;
+      i++;
+    } else if (arg === '--image') {
+      kind = 'image';
+    } else if ((arg === '--channel' || arg === '-c' || arg === '-C') && next) {
       channel = next;
       i++;
     } else if ((arg === '--chat' || arg === '--to') && next) {
@@ -228,13 +298,14 @@ async function sendCommand(args: string[]): Promise<void> {
       i++;
     }
   }
-  
-  if (!text) {
-    console.error('Error: --text is required');
-    console.error('Usage: lettabot-message send --text "Hello!" [--channel telegram] [--chat 123456]');
+
+  // Check if text OR file provided
+  if (!text && !filePath) {
+    console.error('Error: --text or --file is required');
+    console.error('Usage: lettabot-message send --text "..." OR --file path.pdf [--text "caption"]');
     process.exit(1);
   }
-  
+
   // Resolve defaults from last target
   if (!channel || !chatId) {
     const lastTarget = loadLastTarget();
@@ -243,21 +314,30 @@ async function sendCommand(args: string[]): Promise<void> {
       chatId = chatId || lastTarget.chatId;
     }
   }
-  
+
   if (!channel) {
     console.error('Error: --channel is required (no default available)');
-    console.error('Specify: --channel telegram|slack|signal|discord');
+    console.error('Specify: --channel telegram|slack|signal|discord|whatsapp');
     process.exit(1);
   }
-  
+
   if (!chatId) {
     console.error('Error: --chat is required (no default available)');
     console.error('Specify: --chat <chat_id>');
     process.exit(1);
   }
-  
+
   try {
-    await sendToChannel(channel, chatId, text);
+    // Use API for WhatsApp (unified multipart endpoint)
+    if (channel === 'whatsapp') {
+      await sendViaApi(channel, chatId, { text, filePath, kind });
+    } else if (filePath) {
+      // Other channels with files - not yet implemented via API
+      throw new Error(`File sending for ${channel} requires API (currently only WhatsApp supported via API)`);
+    } else {
+      // Other channels with text only - direct API calls
+      await sendToChannel(channel, chatId, text);
+    }
   } catch (error) {
     console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
@@ -266,32 +346,44 @@ async function sendCommand(args: string[]): Promise<void> {
 
 function showHelp(): void {
   console.log(`
-lettabot-message - Send messages to channels
+lettabot-message - Send messages or files to channels
 
 Commands:
-  send [options]          Send a message
+  send [options]          Send a message or file
 
 Send options:
-  --text, -t <text>       Message text (required)
-  --channel, -c <name>    Channel: telegram, slack, signal, discord (default: last used)
+  --text, -t <text>       Message text (or caption when used with --file)
+  --file, -f <path>       File path (optional, for file messages)
+  --image                 Treat file as image (vs document)
+  --channel, -c <name>    Channel: telegram, slack, whatsapp, discord (default: last used)
   --chat, --to <id>       Chat/conversation ID (default: last messaged)
 
 Examples:
-  # Send to last messaged user/channel
+  # Send text message
   lettabot-message send --text "Hello!"
 
-  # Send to specific Telegram chat
-  lettabot-message send --text "Hello!" --channel telegram --chat 123456789
+  # Send file with caption/text
+  lettabot-message send --file screenshot.png --text "Check this out"
+
+  # Send file without text
+  lettabot-message send --file photo.jpg --image
+
+  # Send to specific WhatsApp chat
+  lettabot-message send --file report.pdf --text "Report attached" --channel whatsapp --chat "+1555@s.whatsapp.net"
 
   # Short form
-  lettabot-message send -t "Done!" -c telegram -to 123456789
+  lettabot-message send -t "Done!" -f doc.pdf -c telegram
 
 Environment variables:
   TELEGRAM_BOT_TOKEN      Required for Telegram
   SLACK_BOT_TOKEN         Required for Slack
   DISCORD_BOT_TOKEN       Required for Discord
-  SIGNAL_PHONE_NUMBER     Required for Signal
+  SIGNAL_PHONE_NUMBER     Required for Signal (text only, no files)
+  LETTABOT_API_KEY        Required for WhatsApp (text and files)
+  LETTABOT_API_URL        API server URL (default: http://localhost:8080)
   SIGNAL_CLI_REST_API_URL Signal daemon URL (default: http://127.0.0.1:8090)
+
+Note: WhatsApp uses the API server. Other channels use direct platform APIs.
 `);
 }
 

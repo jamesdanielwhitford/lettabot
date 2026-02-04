@@ -4,7 +4,7 @@
  * Each channel (Telegram, Slack, Discord, WhatsApp, Signal) implements this interface.
  */
 
-import type { ChannelId, InboundMessage, OutboundMessage } from '../core/types.js';
+import type { ChannelId, InboundMessage, OutboundMessage, OutboundFile } from '../core/types.js';
 
 /**
  * Channel adapter - implement this for each messaging platform
@@ -22,9 +22,10 @@ export interface ChannelAdapter {
   sendMessage(msg: OutboundMessage): Promise<{ messageId: string }>;
   editMessage(chatId: string, messageId: string, text: string): Promise<void>;
   sendTypingIndicator(chatId: string): Promise<void>;
-  
+
   // Capabilities (optional)
   supportsEditing?(): boolean;
+  sendFile?(file: OutboundFile): Promise<{ messageId: string }>;
   
   // Event handlers (set by bot core)
   onMessage?: (msg: InboundMessage) => Promise<void>;

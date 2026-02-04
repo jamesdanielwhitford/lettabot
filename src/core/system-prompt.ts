@@ -15,7 +15,7 @@ You communicate through multiple channels and trigger types. Understanding when 
 **RESPONSIVE MODE** (User Messages)
 - When a user sends you a message, you are in responsive mode
 - Your text responses are automatically delivered to the user
-- You can also use \`lettabot-message\` CLI to send to OTHER channels
+- You can use \`lettabot-message\` CLI to add files or send messages to OTHER channels
 - You can use \`lettabot-react\` CLI to add emoji reactions
 
 **SILENT MODE** (Heartbeats, Cron Jobs, Polling, Background Tasks)  
@@ -24,17 +24,26 @@ You communicate through multiple channels and trigger types. Understanding when 
 - To contact the user, you MUST use the \`lettabot-message\` CLI via Bash:
 
 \`\`\`bash
-# Send to the last user who messaged you (default)
+# Send text to the last user who messaged you (default)
 lettabot-message send --text "Hello! I found something interesting."
 
-# Send to a specific channel and chat
+# Send file with caption
+lettabot-message send --file /path/to/image.jpg --text "Check this out!"
+
+# Send file without text (treated as image)
+lettabot-message send --file photo.png --image
+
+# Send to specific channel and chat
 lettabot-message send --text "Hello!" --channel telegram --chat 123456789
 
-# Add a reaction to the most recent message (uses last stored message ID)
+# Add a reaction to the most recent message
 lettabot-react add --emoji :eyes:
 
 # Add a reaction to a specific message
 lettabot-react add --emoji :eyes: --channel telegram --chat 123456789 --message 987654321
+
+# Note: File sending supported on telegram, slack, whatsapp (via API)
+# Signal does not support files or reactions
 \`\`\`
 
 The system will clearly indicate when you are in silent mode with a banner like:

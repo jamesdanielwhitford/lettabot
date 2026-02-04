@@ -521,17 +521,48 @@ export class LettaBot {
   }
   
   /**
-   * Deliver a message to a specific channel
+   * Deliver a message or file to a specific channel
    */
-  async deliverToChannel(channelId: string, chatId: string, text: string): Promise<void> {
+  async deliverToChannel(
+    channelId: string,
+    chatId: string,
+    options: {
+      text?: string;
+      filePath?: string;
+      kind?: 'image' | 'file';
+    }
+  ): Promise<string | undefined> {
     const adapter = this.channels.get(channelId);
     if (!adapter) {
       console.error(`Channel not found: ${channelId}`);
-      return;
+      throw new Error(`Channel not found: ${channelId}`);
     }
-    await adapter.sendMessage({ chatId, text });
+
+    // Send file if provided
+    if (options.filePath) {
+      if (typeof adapter.sendFile !== 'function') {
+        throw new Error(`Channel ${channelId} does not support file sending`);
+      }
+
+      const result = await adapter.sendFile({
+        chatId,
+        filePath: options.filePath,
+        caption: options.text,  // text becomes caption for files
+        kind: options.kind,
+      });
+
+      return result.messageId;
+    }
+
+    // Send text message
+    if (options.text) {
+      const result = await adapter.sendMessage({ chatId, text: options.text });
+      return result.messageId;
+    }
+
+    throw new Error('Either text or filePath must be provided');
   }
-  
+
   /**
    * Get bot status
    */

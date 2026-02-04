@@ -5,10 +5,13 @@
  * Chat continues seamlessly between Telegram, Slack, and WhatsApp.
  */
 
-import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, readdirSync, promises as fs } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
+
+// API server imports
+import { createApiServer } from './api/server.js';
+import { loadOrGenerateApiKey } from './api/auth.js';
 
 // Load YAML config and apply to process.env (overrides .env values)
 import { loadConfig, applyConfigToEnv, syncProviders, resolveConfigPath } from './config/index.js';
@@ -487,20 +490,20 @@ async function main() {
   // Start all channels
   await bot.start();
   
-  // Start health check server (for Railway/Docker health checks)
-  // Only exposes "ok" - no sensitive info
-  const healthPort = parseInt(process.env.PORT || '8080', 10);
-  const healthServer = createServer((req, res) => {
-    if (req.url === '/health' || req.url === '/') {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('ok');
-    } else {
-      res.writeHead(404);
-      res.end('Not found');
-    }
-  });
-  healthServer.listen(healthPort, () => {
-    console.log(`[Health] Listening on :${healthPort}`);
+  // Load/generate API key for CLI authentication
+  const apiKey = loadOrGenerateApiKey();
+  console.log(`[API] Key: ${apiKey.slice(0, 8)}... (set LETTABOT_API_KEY to customize)`);
+
+  // Start API server (replaces health server, includes health checks)
+  // Provides endpoints for CLI to send messages across Docker boundaries
+  const apiPort = parseInt(process.env.PORT || '8080', 10);
+  const apiHost = process.env.API_HOST; // undefined = 127.0.0.1 (secure default)
+  const apiCorsOrigin = process.env.API_CORS_ORIGIN; // undefined = same-origin only
+  const apiServer = createApiServer(bot, {
+    port: apiPort,
+    apiKey: apiKey,
+    host: apiHost,
+    corsOrigin: apiCorsOrigin,
   });
   
   // Log status
