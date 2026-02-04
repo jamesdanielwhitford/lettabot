@@ -106,7 +106,8 @@ const STABLE_CONNECTION_MS = 60 * 1000;
 
 export class WhatsAppAdapter implements ChannelAdapter {
   readonly id = "whatsapp" as const;
-  readonly name = "WhatsApp";
+  readonly name: string;
+  readonly accountId: string;
 
   private config: WhatsAppConfig;
   private running = false;
@@ -180,6 +181,8 @@ export class WhatsAppAdapter implements ChannelAdapter {
       ...config,
       dmPolicy: config.dmPolicy || "pairing",
     };
+    this.accountId = config.accountId || "default";
+    this.name = this.accountId === "default" ? "WhatsApp" : `WhatsApp (${this.accountId})`;
     this.sessionPath = config.sessionPath || "./data/whatsapp-session";
 
     // Initialize dedupe cache
@@ -693,6 +696,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
       if (!isHistory) {
         await this.debouncer.enqueue({
           channel: "whatsapp",
+          accountId: this.accountId,
           chatId,
           userId,
           userName: pushName || undefined,

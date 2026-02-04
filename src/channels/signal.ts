@@ -22,6 +22,7 @@ import { constants } from 'node:fs';
 
 export interface SignalConfig {
   phoneNumber: string;        // Bot's phone number (E.164 format, e.g., +15551234567)
+  accountId?: string;         // Account ID for multi-account support
   cliPath?: string;           // Path to signal-cli binary (default: "signal-cli")
   httpHost?: string;          // Daemon HTTP host (default: "127.0.0.1")
   httpPort?: number;          // Daemon HTTP port (default: 8090)
@@ -119,7 +120,8 @@ async function waitForFile(filePath: string, maxWaitMs = 5000, intervalMs = 100)
 
 export class SignalAdapter implements ChannelAdapter {
   readonly id = 'signal' as const;
-  readonly name = 'Signal';
+  readonly name: string;
+  readonly accountId: string;
   
   private config: SignalConfig;
   private running = false;
@@ -135,6 +137,8 @@ export class SignalAdapter implements ChannelAdapter {
       dmPolicy: config.dmPolicy || 'pairing',
       selfChatMode: config.selfChatMode !== false, // Default true
     };
+    this.accountId = config.accountId || 'default';
+    this.name = this.accountId === 'default' ? 'Signal' : `Signal (${this.accountId})`;
     const host = config.httpHost || '127.0.0.1';
     const port = config.httpPort || 8090;
     this.baseUrl = `http://${host}:${port}`;
@@ -670,6 +674,7 @@ This code expires in 1 hour.`;
       const isGroup = chatId.startsWith('group:');
       const msg: InboundMessage = {
         channel: 'signal',
+        accountId: this.accountId,
         chatId,
         userId: source,
         text: messageText || '',

@@ -245,50 +245,19 @@ export interface SkillsInstallConfig {
 /**
  * Install feature-gated skills to the working directory's .skills/ folder
  * 
- * Skills are NOT installed by default. They are enabled based on:
- * 1. Feature flags (cronEnabled, googleEnabled)
- * 2. Explicit list (additionalSkills)
+ * @deprecated Skills are now managed by Letta Code natively. The Letta Code SDK
+ * automatically discovers skills from:
+ * - ~/.letta/skills/ (global skills)
+ * - ~/.letta/agents/{id}/skills/ (agent-scoped skills)  
+ * - {workspace}/.skills/ (project skills)
  * 
- * Called on server startup
+ * Agents can load/unload skills via the Skill tool in their memory.
+ * This function is kept for backwards compatibility but is now a no-op.
  */
-export function installSkillsToWorkingDir(workingDir: string, config: SkillsInstallConfig = {}): void {
-  const targetDir = join(workingDir, '.skills');
-  
-  // Ensure target directory exists
-  mkdirSync(targetDir, { recursive: true });
-  
-  // Collect skills to install based on enabled features
-  const skillsToInstall: string[] = [];
-  
-  // Cron skills (always if cron is enabled)
-  if (config.cronEnabled) {
-    skillsToInstall.push(...FEATURE_SKILLS.cron);
-  }
-  
-  // Google skills (if Gmail polling or Google is configured)
-  if (config.googleEnabled) {
-    skillsToInstall.push(...FEATURE_SKILLS.google);
-  }
-  
-  // Additional explicitly enabled skills
-  if (config.additionalSkills?.length) {
-    skillsToInstall.push(...config.additionalSkills);
-  }
-  
-  if (skillsToInstall.length === 0) {
-    console.log('[Skills] No feature-gated skills to install');
-    return;
-  }
-  
-  // Source directories (later has priority)
-  const sourceDirs = [SKILLS_SH_DIR, BUNDLED_SKILLS_DIR, PROJECT_SKILLS_DIR];
-  
-  // Install the specific skills
-  const installed = installSpecificSkills(skillsToInstall, sourceDirs, targetDir);
-  
-  if (installed.length > 0) {
-    console.log(`[Skills] Installed ${installed.length} skill(s): ${installed.join(', ')}`);
-  }
+export function installSkillsToWorkingDir(_workingDir: string, _config: SkillsInstallConfig = {}): void {
+  // No-op: Skills are now managed by Letta Code natively
+  // The SDK discovers skills from standard directories automatically
+  console.log('[Skills] Skills managed by Letta Code - no installation needed');
 }
 
 

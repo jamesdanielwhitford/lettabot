@@ -18,7 +18,10 @@ import { basename } from 'node:path';
 import { buildAttachmentPath, downloadToFile } from './attachments.js';
 
 export interface TelegramConfig {
+  /** Bot token from @BotFather */
   token: string;
+  /** Account ID for multi-account support (default: 'default') */
+  accountId?: string;
   dmPolicy?: DmPolicy;           // 'pairing' (default), 'allowlist', or 'open'
   allowedUsers?: number[];       // Telegram user IDs (config allowlist)
   attachmentsDir?: string;
@@ -27,7 +30,8 @@ export interface TelegramConfig {
 
 export class TelegramAdapter implements ChannelAdapter {
   readonly id = 'telegram' as const;
-  readonly name = 'Telegram';
+  readonly name: string;
+  readonly accountId: string;
   
   private bot: Bot;
   private config: TelegramConfig;
@@ -43,6 +47,8 @@ export class TelegramAdapter implements ChannelAdapter {
       ...config,
       dmPolicy: config.dmPolicy || 'pairing',  // Default to pairing
     };
+    this.accountId = config.accountId || 'default';
+    this.name = this.accountId === 'default' ? 'Telegram' : `Telegram (${this.accountId})`;
     this.bot = new Bot(config.token);
     this.attachmentsDir = config.attachmentsDir;
     this.attachmentsMaxBytes = config.attachmentsMaxBytes;
@@ -165,6 +171,7 @@ export class TelegramAdapter implements ChannelAdapter {
       if (this.onMessage) {
         await this.onMessage({
           channel: 'telegram',
+          accountId: this.accountId,
           chatId: String(chatId),
           userId: String(userId),
           userName: ctx.from.username || ctx.from.first_name,
@@ -188,6 +195,7 @@ export class TelegramAdapter implements ChannelAdapter {
       if (this.onMessage) {
         await this.onMessage({
           channel: 'telegram',
+          accountId: this.accountId,
           chatId: String(chatId),
           userId: String(userId),
           userName: ctx.from.username || ctx.from.first_name,
@@ -234,6 +242,7 @@ export class TelegramAdapter implements ChannelAdapter {
         if (this.onMessage) {
           await this.onMessage({
             channel: 'telegram',
+            accountId: this.accountId,
             chatId: String(chatId),
             userId: String(userId),
             userName: ctx.from.username || ctx.from.first_name,
@@ -520,3 +529,53 @@ const TELEGRAM_REACTION_EMOJIS = [
 type TelegramReactionEmoji = typeof TELEGRAM_REACTION_EMOJIS[number];
 
 const TELEGRAM_REACTION_SET = new Set<string>(TELEGRAM_REACTION_EMOJIS);
+
+// =============================================================================
+// Multi-account Factory
+// =============================================================================
+
+import type { TelegramConfig as TelegramConfigType, TelegramAccountConfig } from '../config/types.js';
+
+/**
+ * Create Telegram adapters from config (supports multi-account)
+ */
+export function createTelegramAdapters(
+  config: TelegramConfigType,
+  options?: {
+    attachmentsDir?: string;
+    attachmentsMaxBytes?: number;
+  }
+): TelegramAdapter[] {
+  const adapters: TelegramAdapter[] = [];
+  
+  // Multi-account mode
+  if (config.accounts && Object.keys(config.accounts).length > 0) {
+    for (const [accountId, accountConfig] of Object.entries(config.accounts)) {
+      adapters.push(new TelegramAdapter({
+        token: accountConfig.token,
+        accountId,
+        dmPolicy: accountConfig.dmPolicy || config.dmPolicy,
+        allowedUsers: (accountConfig.allowedUsers || config.allowedUsers)?.map(u => 
+          typeof u === 'string' ? parseInt(u, 10) : u
+        ).filter(n => !isNaN(n)),
+        attachmentsDir: options?.attachmentsDir,
+        attachmentsMaxBytes: options?.attachmentsMaxBytes,
+      }));
+    }
+  }
+  // Legacy single-account mode
+  else if (config.token) {
+    adapters.push(new TelegramAdapter({
+      token: config.token,
+      accountId: 'default',
+      dmPolicy: config.dmPolicy,
+      allowedUsers: config.allowedUsers?.map(u => 
+        typeof u === 'string' ? parseInt(u, 10) : u
+      ).filter(n => !isNaN(n)),
+      attachmentsDir: options?.attachmentsDir,
+      attachmentsMaxBytes: options?.attachmentsMaxBytes,
+    }));
+  }
+  
+  return adapters;
+}

@@ -16,6 +16,7 @@ let App: typeof import('@slack/bolt').App;
 export interface SlackConfig {
   botToken: string;       // xoxb-...
   appToken: string;       // xapp-... (for Socket Mode)
+  accountId?: string;     // Account ID for multi-account support
   allowedUsers?: string[]; // Slack user IDs (e.g., U01234567)
   attachmentsDir?: string;
   attachmentsMaxBytes?: number;
@@ -23,7 +24,8 @@ export interface SlackConfig {
 
 export class SlackAdapter implements ChannelAdapter {
   readonly id = 'slack' as const;
-  readonly name = 'Slack';
+  readonly name: string;
+  readonly accountId: string;
   
   private app: InstanceType<typeof App> | null = null;
   private config: SlackConfig;
@@ -35,6 +37,8 @@ export class SlackAdapter implements ChannelAdapter {
   
   constructor(config: SlackConfig) {
     this.config = config;
+    this.accountId = config.accountId || 'default';
+    this.name = this.accountId === 'default' ? 'Slack' : `Slack (${this.accountId})`;
     this.attachmentsDir = config.attachmentsDir;
     this.attachmentsMaxBytes = config.attachmentsMaxBytes;
   }
@@ -110,6 +114,7 @@ export class SlackAdapter implements ChannelAdapter {
         
         await this.onMessage({
           channel: 'slack',
+          accountId: this.accountId,
           chatId: channelId,
           userId: userId || '',
           userHandle: userId || '',  // Slack user ID serves as handle
@@ -148,6 +153,7 @@ export class SlackAdapter implements ChannelAdapter {
         
         await this.onMessage({
           channel: 'slack',
+          accountId: this.accountId,
           chatId: channelId,
           userId: userId || '',
           userHandle: userId || '',  // Slack user ID serves as handle

@@ -60,6 +60,8 @@ export interface InboundAttachment {
  */
 export interface InboundMessage {
   channel: ChannelId;
+  /** Account ID for multi-account channels (e.g., "personal", "work_bot") */
+  accountId?: string;
   chatId: string;
   userId: string;
   userName?: string;      // Display name (e.g., "Cameron")
@@ -119,10 +121,16 @@ export interface LastMessageTarget {
 }
 
 /**
- * Agent store - persists the single agent ID
+ * Agent store - persists agent state
+ * 
+ * In multi-agent mode, each agent config ID has its own store file:
+ * ~/.lettabot/agents/{configId}/state.json
  */
 export interface AgentStore {
+  /** Letta Cloud agent ID (the actual remote agent) */
   agentId: string | null;
+  /** Config agent ID (the local config identifier) */
+  configId?: string;
   conversationId?: string | null; // Current conversation ID
   baseUrl?: string; // Server URL this agent belongs to
   createdAt?: string;

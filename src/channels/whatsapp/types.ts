@@ -23,6 +23,9 @@ export type BaileysDisconnectReasonType = typeof BaileysDisconnectReason;
  * Configuration for WhatsApp channel adapter
  */
 export interface WhatsAppConfig {
+  /** Account ID for multi-account support (default: "default") */
+  accountId?: string;
+
   /** Directory to store auth state (default: "./data/whatsapp-session") */
   sessionPath?: string;
 

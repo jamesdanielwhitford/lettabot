@@ -18,6 +18,7 @@ let Partials: typeof import('discord.js').Partials;
 
 export interface DiscordConfig {
   token: string;
+  accountId?: string;       // Account ID for multi-account support
   dmPolicy?: DmPolicy;      // 'pairing' (default), 'allowlist', or 'open'
   allowedUsers?: string[];  // Discord user IDs
   attachmentsDir?: string;
@@ -26,7 +27,8 @@ export interface DiscordConfig {
 
 export class DiscordAdapter implements ChannelAdapter {
   readonly id = 'discord' as const;
-  readonly name = 'Discord';
+  readonly name: string;
+  readonly accountId: string;
 
   private client: InstanceType<typeof Client> | null = null;
   private config: DiscordConfig;
@@ -42,6 +44,8 @@ export class DiscordAdapter implements ChannelAdapter {
       ...config,
       dmPolicy: config.dmPolicy || 'pairing',
     };
+    this.accountId = config.accountId || 'default';
+    this.name = this.accountId === 'default' ? 'Discord' : `Discord (${this.accountId})`;
     this.attachmentsDir = config.attachmentsDir;
     this.attachmentsMaxBytes = config.attachmentsMaxBytes;
   }
@@ -227,6 +231,7 @@ Ask the bot owner to approve with:
 
         await this.onMessage({
           channel: 'discord',
+          accountId: this.accountId,
           chatId: message.channel.id,
           userId,
           userName: displayName,

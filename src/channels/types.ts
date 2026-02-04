@@ -10,8 +10,12 @@ import type { ChannelId, InboundMessage, OutboundMessage } from '../core/types.j
  * Channel adapter - implement this for each messaging platform
  */
 export interface ChannelAdapter {
+  /** Channel type (e.g., 'telegram', 'slack') */
   readonly id: ChannelId;
+  /** Display name */
   readonly name: string;
+  /** Account ID for multi-account channels (e.g., 'personal', 'work_bot') */
+  readonly accountId: string;
   
   // Lifecycle
   start(): Promise<void>;

@@ -47,14 +47,34 @@ export function loadConfig(): LettaBotConfig {
     const content = readFileSync(configPath, 'utf-8');
     const parsed = YAML.parse(content) as Partial<LettaBotConfig>;
     
+    // Check if using multi-agent mode
+    const isMultiAgent = parsed.agents?.list && parsed.agents.list.length > 0;
+    
     // Merge with defaults
-    return {
+    const config: LettaBotConfig = {
       ...DEFAULT_CONFIG,
       ...parsed,
       server: { ...DEFAULT_CONFIG.server, ...parsed.server },
-      agent: { ...DEFAULT_CONFIG.agent, ...parsed.agent },
       channels: { ...DEFAULT_CONFIG.channels, ...parsed.channels },
     };
+    
+    // Only include legacy agent field if not using multi-agent mode
+    if (!isMultiAgent && DEFAULT_CONFIG.agent) {
+      config.agent = { 
+        ...DEFAULT_CONFIG.agent, 
+        ...(parsed.agent || {}),
+      };
+    }
+    
+    // Preserve multi-agent config if present
+    if (parsed.agents) {
+      config.agents = parsed.agents;
+    }
+    if (parsed.bindings) {
+      config.bindings = parsed.bindings;
+    }
+    
+    return config;
   } catch (err) {
     console.error(`[Config] Failed to load ${configPath}:`, err);
     return { ...DEFAULT_CONFIG };
@@ -85,6 +105,9 @@ export function saveConfig(config: LettaBotConfig, path?: string): void {
 
 /**
  * Get environment variables from config (for backwards compatibility)
+ * 
+ * Note: In multi-agent mode, most agent-specific env vars are not set here.
+ * Each agent manages its own configuration.
  */
 export function configToEnv(config: LettaBotConfig): Record<string, string> {
   const env: Record<string, string> = {};
@@ -97,15 +120,31 @@ export function configToEnv(config: LettaBotConfig): Record<string, string> {
     env.LETTA_API_KEY = config.server.apiKey;
   }
   
-  // Agent
-  if (config.agent.id) {
-    env.LETTA_AGENT_ID = config.agent.id;
-  }
-  if (config.agent.name) {
-    env.AGENT_NAME = config.agent.name;
-  }
-  if (config.agent.model) {
-    env.MODEL = config.agent.model;
+  // Check for multi-agent mode
+  const isMultiAgent = config.agents?.list && config.agents.list.length > 0;
+  
+  // Legacy single-agent mode: set env vars for the single agent
+  if (!isMultiAgent && config.agent) {
+    if (config.agent.id) {
+      env.LETTA_AGENT_ID = config.agent.id;
+    }
+    if (config.agent.name) {
+      env.AGENT_NAME = config.agent.name;
+    }
+    if (config.agent.model) {
+      env.MODEL = config.agent.model;
+    }
+  } else if (isMultiAgent) {
+    // Multi-agent mode: set default model from defaults or first agent
+    const defaultModel = config.agents?.defaults?.model || config.agents?.list?.[0]?.model;
+    if (defaultModel) {
+      env.MODEL = defaultModel;
+    }
+    // Set default agent name from first/default agent
+    const defaultAgent = config.agents?.list?.find(a => a.default) || config.agents?.list?.[0];
+    if (defaultAgent?.name) {
+      env.AGENT_NAME = defaultAgent.name;
+    }
   }
   
   // Channels
