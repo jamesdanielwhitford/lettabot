@@ -13,17 +13,17 @@ describe('StreamWatchdog', () => {
   });
 
   describe('default behavior', () => {
-    it('uses 30s default idle timeout', () => {
+    it('uses 120s default idle timeout', () => {
       const onAbort = vi.fn();
       const watchdog = new StreamWatchdog({ onAbort });
       watchdog.start();
 
-      // Should not abort before 30s
-      vi.advanceTimersByTime(29000);
+      // Should not abort before 120s
+      vi.advanceTimersByTime(119000);
       expect(onAbort).not.toHaveBeenCalled();
       expect(watchdog.isAborted).toBe(false);
 
-      // Should abort at 30s
+      // Should abort at 120s
       vi.advanceTimersByTime(1000);
       expect(onAbort).toHaveBeenCalledTimes(1);
       expect(watchdog.isAborted).toBe(true);
@@ -36,16 +36,16 @@ describe('StreamWatchdog', () => {
       const watchdog = new StreamWatchdog({ onAbort });
       watchdog.start();
 
-      // Advance 25s, then ping
-      vi.advanceTimersByTime(25000);
+      // Advance 100s, then ping
+      vi.advanceTimersByTime(100000);
       watchdog.ping();
 
-      // Advance another 25s - should not abort (only 25s since ping)
-      vi.advanceTimersByTime(25000);
+      // Advance another 100s - should not abort (only 100s since ping)
+      vi.advanceTimersByTime(100000);
       expect(onAbort).not.toHaveBeenCalled();
 
-      // Advance 5 more seconds - now 30s since last ping
-      vi.advanceTimersByTime(5000);
+      // Advance 20 more seconds - now 120s since last ping
+      vi.advanceTimersByTime(20000);
       expect(onAbort).toHaveBeenCalledTimes(1);
 
       watchdog.stop();

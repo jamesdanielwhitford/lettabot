@@ -30,7 +30,7 @@ export class StreamWatchdog {
     const envTimeout = Number(process.env.LETTA_STREAM_IDLE_TIMEOUT_MS);
     this.idleTimeoutMs = Number.isFinite(envTimeout) && envTimeout > 0
       ? envTimeout
-      : (options.idleTimeoutMs ?? 30000);
+      : (options.idleTimeoutMs ?? 120000);
     this.logIntervalMs = options.logIntervalMs ?? 10000;
     this.onAbort = options.onAbort;
   }
