@@ -628,13 +628,28 @@ This code expires in 1 hour.`;
             
             const { transcribeAudio } = await import('../transcription/index.js');
             const ext = voiceAttachment.contentType?.split('/')[1] || 'ogg';
-            const transcript = await transcribeAudio(buffer, `voice.${ext}`);
+            const result = await transcribeAudio(buffer, `voice.${ext}`, { audioPath: attachmentPath });
             
-            console.log(`[Signal] Transcribed voice message: "${transcript.slice(0, 50)}..."`);
-            messageText = (messageText ? messageText + '\n' : '') + `[Voice message]: ${transcript}`;
+            if (result.success) {
+              if (result.text) {
+                console.log(`[Signal] Transcribed voice message: "${result.text.slice(0, 50)}..."`);
+                messageText = (messageText ? messageText + '\n' : '') + `[Voice message]: ${result.text}`;
+              } else {
+                console.warn(`[Signal] Transcription returned empty text`);
+                messageText = (messageText ? messageText + '\n' : '') + `[Voice message - transcription returned empty]`;
+              }
+            } else {
+              const errorMsg = result.error || 'Unknown transcription error';
+              console.error(`[Signal] Transcription failed: ${errorMsg}`);
+              const errorInfo = result.audioPath 
+                ? `[Voice message - transcription failed: ${errorMsg}. Audio saved to: ${result.audioPath}]`
+                : `[Voice message - transcription failed: ${errorMsg}]`;
+              messageText = (messageText ? messageText + '\n' : '') + errorInfo;
+            }
           }
         } catch (error) {
           console.error('[Signal] Error transcribing voice message:', error);
+          messageText = (messageText ? messageText + '\n' : '') + `[Voice message - error: ${error instanceof Error ? error.message : 'unknown error'}]`;
         }
       } else if (attachments?.some(a => a.contentType?.startsWith('audio/'))) {
         // Audio attachment exists but has no ID
