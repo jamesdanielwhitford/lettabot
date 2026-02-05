@@ -71,5 +71,8 @@
   "devDependencies": {
     "@types/update-notifier": "^6.0.8",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "keyv": "$keyv"
   }
 }
