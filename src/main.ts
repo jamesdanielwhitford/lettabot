@@ -304,10 +304,11 @@ if (!config.telegram.enabled && !config.slack.enabled && !config.whatsapp.enable
   process.exit(1);
 }
 
-// Validate LETTA_API_KEY is set for cloud mode
-if (!process.env.LETTA_API_KEY) {
-  console.error('\n  Error: LETTA_API_KEY is required.');
-  console.error('  Get your API key from https://app.letta.com and set it as an environment variable.\n');
+// Validate LETTA_API_KEY is set for cloud mode (selfhosted mode doesn't require it)
+if (yamlConfig.server.mode !== 'selfhosted' && !process.env.LETTA_API_KEY) {
+  console.error('\n  Error: LETTA_API_KEY is required for Letta Cloud.');
+  console.error('  Get your API key from https://app.letta.com and set it as an environment variable.');
+  console.error('  Or use selfhosted mode: run "lettabot onboard" and select "Enter self-hosted URL".\n');
   process.exit(1);
 }
 

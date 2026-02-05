@@ -326,6 +326,8 @@ Check the [ADE](https://app.letta.com) to see if your agent is attempting to use
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
+- [Self-Hosted Setup](docs/selfhosted-setup.md) - Run with your own Letta server
+- [Configuration Reference](docs/configuration.md)
 - [Slack Setup](docs/slack-setup.md)
 - [Discord Setup](docs/discord-setup.md)
 - [WhatsApp Setup](docs/whatsapp-setup.md)
