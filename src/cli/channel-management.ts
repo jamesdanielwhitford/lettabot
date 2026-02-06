@@ -5,7 +5,6 @@
  * Follows the pattern from skills/sync.ts.
  */
 
-import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import * as p from '@clack/prompts';
 import { loadConfig, saveConfig, resolveConfigPath } from '../config/index.js';
@@ -124,7 +123,6 @@ export async function interactiveChannelMenu(): Promise<void> {
     options: [
       { value: 'add', label: 'Add a channel', hint: 'Set up a new integration' },
       { value: 'remove', label: 'Remove a channel', hint: 'Disable and clear config' },
-      { value: 'toggle', label: 'Enable/disable a channel', hint: 'Quick toggle' },
       { value: 'edit', label: 'Edit channel settings', hint: 'Update existing config' },
       { value: 'exit', label: 'Exit', hint: '' },
     ],
@@ -176,23 +174,6 @@ export async function interactiveChannelMenu(): Promise<void> {
       
       if (!p.isCancel(channel)) {
         await removeChannel(channel as ChannelName);
-      }
-      break;
-    }
-    
-    case 'toggle': {
-      const channel = await p.select({
-        message: 'Which channel would you like to toggle?',
-        options: channels.map(c => ({
-          value: c.name,
-          label: `${c.enabled ? '✓' : '✗'} ${c.displayName}`,
-          hint: c.enabled ? 'Click to disable' : 'Click to enable',
-        })),
-      });
-      
-      if (!p.isCancel(channel)) {
-        const ch = channels.find(c => c.name === channel)!;
-        await toggleChannel(channel as ChannelName, !ch.enabled);
       }
       break;
     }
@@ -328,60 +309,6 @@ export async function removeChannel(channelName?: string): Promise<void> {
   
   saveConfig(config);
   p.log.success(`${channelName} disabled`);
-}
-
-/**
- * Quick enable/disable toggle
- */
-export async function toggleChannel(channelName?: string, enable?: boolean): Promise<void> {
-  if (!channelName) {
-    console.error('Usage: lettabot channels enable|disable <channel>');
-    console.error(`Valid channels: ${CHANNEL_NAMES.join(', ')}`);
-    process.exit(1);
-  }
-  
-  if (!CHANNEL_NAMES.includes(channelName as ChannelName)) {
-    console.error(`Unknown channel: ${channelName}`);
-    console.error(`Valid channels: ${CHANNEL_NAMES.join(', ')}`);
-    process.exit(1);
-  }
-  
-  const config = loadConfig();
-  const channelConfig = config.channels[channelName as ChannelName];
-  
-  // If trying to enable but no config exists, run full setup
-  if (enable && (!channelConfig || !hasRequiredConfig(channelName as ChannelName, channelConfig))) {
-    console.log(`${channelName} is not configured. Running setup...`);
-    return addChannel(channelName);
-  }
-  
-  if (channelConfig) {
-    (channelConfig as any).enabled = enable;
-    saveConfig(config);
-    console.log(`✓ ${channelName} ${enable ? 'enabled' : 'disabled'}`);
-  }
-}
-
-/**
- * Check if a channel has required configuration
- */
-function hasRequiredConfig(channel: ChannelName, config: any): boolean {
-  if (!config) return false;
-  
-  switch (channel) {
-    case 'telegram':
-      return !!config.token;
-    case 'slack':
-      return !!config.appToken && !!config.botToken;
-    case 'discord':
-      return !!config.token;
-    case 'whatsapp':
-      return true; // No token needed, uses QR code
-    case 'signal':
-      return !!config.phone;
-    default:
-      return false;
-  }
 }
 
 // ============================================================================
@@ -786,14 +713,6 @@ export async function channelManagementCommand(subCommand?: string, channelName?
     case 'remove':
     case 'rm':
       await removeChannel(channelName);
-      break;
-      
-    case 'enable':
-      await toggleChannel(channelName, true);
-      break;
-      
-    case 'disable':
-      await toggleChannel(channelName, false);
       break;
       
     default:

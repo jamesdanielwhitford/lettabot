@@ -193,9 +193,7 @@ Commands:
   channels             Manage channels (interactive menu)
   channels list        Show channel status
   channels add <ch>    Add a channel (telegram, slack, discord, whatsapp, signal)
-  channels remove <ch> Remove/disable a channel
-  channels enable <ch> Quick enable a configured channel
-  channels disable <ch> Quick disable a channel
+  channels remove <ch> Remove a channel
   logout               Logout from Letta Platform (revoke OAuth tokens)
   skills               Configure which skills are enabled
   skills status        Show skills status
@@ -210,7 +208,7 @@ Examples:
   lettabot server                            # Start the bot
   lettabot channels                          # Interactive channel management
   lettabot channels add discord              # Add Discord integration
-  lettabot channels disable telegram         # Disable Telegram
+  lettabot channels remove telegram          # Remove Telegram
   lettabot pairing list telegram             # Show pending Telegram pairings
   lettabot pairing approve telegram ABCD1234 # Approve a pairing code
 
