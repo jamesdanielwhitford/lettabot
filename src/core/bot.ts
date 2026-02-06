@@ -9,7 +9,7 @@ import { mkdirSync } from 'node:fs';
 import type { ChannelAdapter } from '../channels/types.js';
 import type { BotConfig, InboundMessage, TriggerContext } from './types.js';
 import { Store } from './store.js';
-import { updateAgentName, getPendingApprovals, rejectApproval, cancelRuns, disableAllToolApprovals, recoverOrphanedConversationApproval } from '../tools/letta-api.js';
+import { updateAgentName, getPendingApprovals, rejectApproval, cancelRuns, recoverOrphanedConversationApproval } from '../tools/letta-api.js';
 import { installSkillsToAgent } from '../skills/loader.js';
 import { formatMessageEnvelope, type SessionContextOptions } from './formatter.js';
 import { loadMemoryBlocks } from './memory.js';
@@ -167,8 +167,6 @@ export class LettaBot {
           );
           if (convResult.recovered) {
             console.log(`[Bot] Conversation-level recovery succeeded: ${convResult.details}`);
-            console.log('[Bot] Disabling tool approval requirements...');
-            await disableAllToolApprovals(this.store.agentId!);
             return { recovered: true, shouldReset: false };
           }
         }
@@ -204,10 +202,6 @@ export class LettaBot {
         console.log(`[Bot] Cancelling ${runIds.length} active run(s)...`);
         await cancelRuns(this.store.agentId, runIds);
       }
-      
-      // Disable tool approvals for the future (proactive fix)
-      console.log('[Bot] Disabling tool approval requirements...');
-      await disableAllToolApprovals(this.store.agentId);
       
       console.log('[Bot] Recovery completed');
       return { recovered: true, shouldReset: false };
@@ -563,7 +557,6 @@ export class LettaBot {
                 );
                 if (convResult.recovered) {
                   console.log(`[Bot] Recovery succeeded (${convResult.details}), retrying message...`);
-                  await disableAllToolApprovals(this.store.agentId);
                   return this.processMessage(msg, adapter, /* retried */ true);
                 }
                 console.warn(`[Bot] No orphaned approvals found: ${convResult.details}`);
