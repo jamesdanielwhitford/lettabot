@@ -633,14 +633,21 @@ export class LettaBot {
         } else {
           console.warn('[Bot] Stream received data but no assistant message');
           console.warn('[Bot] Message types received:', msgTypeCounts);
-          console.warn('[Bot] Agent:', this.store.agentId);
-          console.warn('[Bot] Conversation:', this.store.conversationId);
-          const convIdShort = this.store.conversationId?.slice(0, 8) || 'none';
-          await adapter.sendMessage({ 
-            chatId: msg.chatId, 
-            text: `(No response. Conversation: ${convIdShort}... Try: lettabot reset-conversation)`, 
-            threadId: msg.threadId 
-          });
+          // If the stream had tool activity, the agent was working and likely
+          // sent messages via tools (e.g. lettabot-message send). Don't alarm the user.
+          const hadToolActivity = (msgTypeCounts['tool_call'] || 0) > 0 || (msgTypeCounts['tool_result'] || 0) > 0;
+          if (hadToolActivity) {
+            console.log('[Bot] Agent had tool activity but no assistant message - likely sent via tool');
+          } else {
+            console.warn('[Bot] Agent:', this.store.agentId);
+            console.warn('[Bot] Conversation:', this.store.conversationId);
+            const convIdShort = this.store.conversationId?.slice(0, 8) || 'none';
+            await adapter.sendMessage({ 
+              chatId: msg.chatId, 
+              text: `(No response. Conversation: ${convIdShort}... Try: lettabot reset-conversation)`, 
+              threadId: msg.threadId 
+            });
+          }
         }
       }
       
