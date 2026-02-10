@@ -622,6 +622,7 @@ export class LettaBot implements AgentSession {
       let lastAssistantUuid: string | null = null;
       let sentAnyMessage = false;
       let receivedAnyData = false;
+      let sawNonAssistantSinceLastUuid = false;
       const msgTypeCounts: Record<string, number> = {};
       
       const finalizeMessage = async () => {
@@ -685,22 +686,37 @@ export class LettaBot implements AgentSession {
             break;
           }
 
-          // Log meaningful events
+          // Log meaningful events with structured summaries
           if (streamMsg.type === 'tool_call') {
-            console.log(`[Bot] Calling tool: ${streamMsg.toolName || 'unknown'}`);
+            console.log(`[Stream] >>> TOOL CALL: ${streamMsg.toolName || 'unknown'} (id: ${streamMsg.toolCallId?.slice(0, 12) || '?'})`);
+            sawNonAssistantSinceLastUuid = true;
           } else if (streamMsg.type === 'tool_result') {
-            console.log(`[Bot] Tool completed: error=${streamMsg.isError}, resultLen=${(streamMsg as any).content?.length || 0}`);
+            console.log(`[Stream] <<< TOOL RESULT: error=${streamMsg.isError}, len=${(streamMsg as any).content?.length || 0}`);
+            sawNonAssistantSinceLastUuid = true;
           } else if (streamMsg.type === 'assistant' && lastMsgType !== 'assistant') {
             console.log(`[Bot] Generating response...`);
           } else if (streamMsg.type === 'reasoning' && lastMsgType !== 'reasoning') {
             console.log(`[Bot] Reasoning...`);
+            sawNonAssistantSinceLastUuid = true;
+          } else if (streamMsg.type !== 'assistant') {
+            sawNonAssistantSinceLastUuid = true;
           }
           lastMsgType = streamMsg.type;
           
           if (streamMsg.type === 'assistant') {
             const msgUuid = streamMsg.uuid;
-            if (msgUuid && lastAssistantUuid && msgUuid !== lastAssistantUuid && response.trim()) {
-              await finalizeMessage();
+            if (msgUuid && lastAssistantUuid && msgUuid !== lastAssistantUuid) {
+              if (response.trim()) {
+                if (!sawNonAssistantSinceLastUuid) {
+                  console.warn(`[Stream] WARNING: Assistant UUID changed (${lastAssistantUuid.slice(0, 8)} -> ${msgUuid.slice(0, 8)}) with no visible tool_call/reasoning events between them. Tool call events may have been dropped by SDK transformMessage().`);
+                }
+                await finalizeMessage();
+              }
+              // Start tracking tool/reasoning visibility for the new assistant UUID.
+              sawNonAssistantSinceLastUuid = false;
+            } else if (msgUuid && !lastAssistantUuid) {
+              // Clear any pre-assistant noise so the first UUID becomes a clean baseline.
+              sawNonAssistantSinceLastUuid = false;
             }
             lastAssistantUuid = msgUuid || lastAssistantUuid;
             

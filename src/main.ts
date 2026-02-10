@@ -30,6 +30,11 @@ if (yamlConfig.agent?.model) {
 }
 applyConfigToEnv(yamlConfig);
 
+// Bridge DEBUG=1 to DEBUG_SDK so SDK-level dropped wire messages are visible
+if (process.env.DEBUG === '1' && !process.env.DEBUG_SDK) {
+  process.env.DEBUG_SDK = '1';
+}
+
 // Sync BYOK providers on startup (async, don't block)
 syncProviders(yamlConfig).catch(err => console.error('[Config] Failed to sync providers:', err));
 
