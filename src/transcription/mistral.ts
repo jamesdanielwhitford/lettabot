@@ -6,7 +6,14 @@
  */
 
 import { loadConfig } from '../config/index.js';
+import { execSync } from 'node:child_process';
+import { writeFileSync, readFileSync, unlinkSync, mkdirSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { TranscriptionResult } from './openai.js';
+
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const CHUNK_DURATION_SECONDS = 600;
 
 function getApiKey(): string {
   const config = loadConfig();
@@ -37,6 +44,107 @@ function getMimeType(filename: string): string {
   return mimeTypes[ext || ''] || 'audio/ogg';
 }
 
+let ffmpegAvailable: boolean | null = null;
+
+function isFfmpegAvailable(): boolean {
+  if (ffmpegAvailable === null) {
+    try {
+      execSync('which ffmpeg', { stdio: 'ignore' });
+      ffmpegAvailable = true;
+    } catch {
+      ffmpegAvailable = false;
+    }
+  }
+  return ffmpegAvailable;
+}
+
+/**
+ * Send a single buffer to the Voxtral API and return the text.
+ */
+async function attemptTranscription(audioBuffer: Buffer, filename: string): Promise<string> {
+  const apiKey = getApiKey();
+  const model = getModel();
+
+  const file = new File([new Uint8Array(audioBuffer)], filename, {
+    type: getMimeType(filename),
+  });
+
+  const formData = new FormData();
+  formData.append('model', model);
+  formData.append('file', file);
+
+  const response = await fetch('https://api.mistral.ai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Mistral API error (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json() as { text: string };
+  return data.text;
+}
+
+/**
+ * Split large audio into chunks and transcribe each.
+ */
+async function transcribeInChunks(audioBuffer: Buffer, ext: string): Promise<string> {
+  if (!isFfmpegAvailable()) {
+    throw new Error('Cannot split large audio files without ffmpeg');
+  }
+
+  const tempDir = join(tmpdir(), 'lettabot-transcription', `chunks-${Date.now()}`);
+  mkdirSync(tempDir, { recursive: true });
+
+  const inputPath = join(tempDir, `input.${ext}`);
+  const outputPattern = join(tempDir, 'chunk-%03d.mp3');
+
+  try {
+    writeFileSync(inputPath, audioBuffer);
+
+    execSync(
+      `ffmpeg -y -i "${inputPath}" -f segment -segment_time ${CHUNK_DURATION_SECONDS} -reset_timestamps 1 -acodec libmp3lame -q:a 2 "${outputPattern}" 2>/dev/null`,
+      { timeout: 120000 }
+    );
+
+    const chunkFiles = readdirSync(tempDir)
+      .filter(f => f.startsWith('chunk-') && f.endsWith('.mp3'))
+      .sort();
+
+    if (chunkFiles.length === 0) {
+      throw new Error('Failed to split audio into chunks');
+    }
+
+    console.log(`[Transcription] Split into ${chunkFiles.length} chunks`);
+
+    const transcriptions: string[] = [];
+    for (let i = 0; i < chunkFiles.length; i++) {
+      const chunkPath = join(tempDir, chunkFiles[i]);
+      const chunkBuffer = readFileSync(chunkPath);
+      console.log(`[Transcription] Transcribing chunk ${i + 1}/${chunkFiles.length} (${(chunkBuffer.length / 1024).toFixed(0)}KB)`);
+      const text = await attemptTranscription(chunkBuffer, chunkFiles[i]);
+      if (text.trim()) {
+        transcriptions.push(text.trim());
+      }
+    }
+
+    const combined = transcriptions.join(' ');
+    console.log(`[Transcription] Combined ${transcriptions.length} chunks into ${combined.length} chars`);
+    return combined;
+  } finally {
+    try {
+      const files = readdirSync(tempDir);
+      for (const file of files) {
+        unlinkSync(join(tempDir, file));
+      }
+      execSync(`rmdir "${tempDir}" 2>/dev/null || true`);
+    } catch {}
+  }
+}
+
 /**
  * Transcribe audio using Mistral Voxtral API
  *
@@ -49,36 +157,16 @@ export async function transcribeAudio(
   options?: { audioPath?: string }
 ): Promise<TranscriptionResult> {
   try {
-    const apiKey = getApiKey();
-    const model = getModel();
-
-    const file = new File([new Uint8Array(audioBuffer)], filename, {
-      type: getMimeType(filename),
-    });
-
-    const formData = new FormData();
-    formData.append('model', model);
-    formData.append('file', file);
-
-    const response = await fetch('https://api.mistral.ai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `Mistral API error (${response.status}): ${errorText}`,
-        audioPath: options?.audioPath,
-      };
+    // Check file size and chunk if needed
+    if (audioBuffer.length > MAX_FILE_SIZE) {
+      const ext = filename.split('.').pop()?.toLowerCase() || 'ogg';
+      console.log(`[Transcription] File too large (${(audioBuffer.length / 1024 / 1024).toFixed(1)}MB), splitting into chunks`);
+      const text = await transcribeInChunks(audioBuffer, ext);
+      return { success: true, text };
     }
 
-    const data = await response.json() as { text: string };
-    return { success: true, text: data.text };
+    const text = await attemptTranscription(audioBuffer, filename);
+    return { success: true, text };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     return {
