@@ -44,6 +44,18 @@ function getMimeType(filename: string): string {
   return mimeTypes[ext || ''] || 'audio/ogg';
 }
 
+const NEEDS_CONVERSION = ['aac', 'amr', 'caf', 'x-caf', '3gp', '3gpp'];
+
+const FORMAT_MAP: Record<string, string> = {
+  'aac': 'm4a',
+  'amr': 'mp3',
+  'opus': 'ogg',
+  'x-caf': 'm4a',
+  'caf': 'm4a',
+  '3gp': 'mp4',
+  '3gpp': 'mp4',
+};
+
 let ffmpegAvailable: boolean | null = null;
 
 function isFfmpegAvailable(): boolean {
@@ -56,6 +68,27 @@ function isFfmpegAvailable(): boolean {
     }
   }
   return ffmpegAvailable;
+}
+
+function convertAudioToMp3(audioBuffer: Buffer, inputExt: string): Buffer {
+  const tempDir = join(tmpdir(), 'lettabot-transcription');
+  mkdirSync(tempDir, { recursive: true });
+
+  const inputPath = join(tempDir, `input-${Date.now()}.${inputExt}`);
+  const outputPath = join(tempDir, `output-${Date.now()}.mp3`);
+
+  try {
+    writeFileSync(inputPath, audioBuffer);
+    execSync(`ffmpeg -y -i "${inputPath}" -acodec libmp3lame -q:a 2 "${outputPath}" 2>/dev/null`, {
+      timeout: 30000,
+    });
+    const converted = readFileSync(outputPath);
+    console.log(`[Transcription] Converted ${audioBuffer.length} bytes → ${converted.length} bytes`);
+    return converted;
+  } finally {
+    try { unlinkSync(inputPath); } catch {}
+    try { unlinkSync(outputPath); } catch {}
+  }
 }
 
 /**
@@ -156,16 +189,49 @@ export async function transcribeAudio(
   filename: string = 'audio.ogg',
   options?: { audioPath?: string }
 ): Promise<TranscriptionResult> {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+
   try {
+    let finalBuffer = audioBuffer;
+    let finalFilename = filename;
+
+    // Convert unsupported formats via ffmpeg
+    if (NEEDS_CONVERSION.includes(ext)) {
+      const mapped = FORMAT_MAP[ext];
+      if (mapped) {
+        console.log(`[Transcription] Trying .${ext} as .${mapped} (no conversion)`);
+        finalFilename = filename.replace(/\.[^.]+$/, `.${mapped}`);
+
+        try {
+          const text = await attemptTranscription(finalBuffer, finalFilename);
+          return { success: true, text };
+        } catch {
+          console.log(`[Transcription] Rename approach failed for .${ext}`);
+        }
+      }
+
+      if (isFfmpegAvailable()) {
+        console.log(`[Transcription] Converting .${ext} → .mp3 with ffmpeg`);
+        finalBuffer = convertAudioToMp3(audioBuffer, ext);
+        finalFilename = filename.replace(/\.[^.]+$/, '.mp3');
+      } else {
+        return {
+          success: false,
+          error: `Cannot transcribe .${ext} format. Install ffmpeg for audio conversion, or send in a supported format (mp3, ogg, wav, flac).`,
+          audioPath: options?.audioPath,
+        };
+      }
+    }
+
     // Check file size and chunk if needed
-    if (audioBuffer.length > MAX_FILE_SIZE) {
-      const ext = filename.split('.').pop()?.toLowerCase() || 'ogg';
-      console.log(`[Transcription] File too large (${(audioBuffer.length / 1024 / 1024).toFixed(1)}MB), splitting into chunks`);
-      const text = await transcribeInChunks(audioBuffer, ext);
+    if (finalBuffer.length > MAX_FILE_SIZE) {
+      const finalExt = finalFilename.split('.').pop()?.toLowerCase() || 'ogg';
+      console.log(`[Transcription] File too large (${(finalBuffer.length / 1024 / 1024).toFixed(1)}MB), splitting into chunks`);
+      const text = await transcribeInChunks(finalBuffer, finalExt);
       return { success: true, text };
     }
 
-    const text = await attemptTranscription(audioBuffer, filename);
+    const text = await attemptTranscription(finalBuffer, finalFilename);
     return { success: true, text };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
