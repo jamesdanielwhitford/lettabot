@@ -626,10 +626,9 @@ This code expires in 1 hour.`;
           const { isTranscriptionConfigured } = await import('../transcription/index.js');
           if (!isTranscriptionConfigured()) {
             if (chatId) {
-              const audioInfo = savedAudioPath ? ` Audio saved to: ${savedAudioPath}` : '';
               await this.sendMessage({
                 chatId,
-                text: `Voice messages require a transcription API key.${audioInfo} See: https://github.com/letta-ai/lettabot#voice-messages`
+                text: 'Voice messages require a transcription API key. See: https://github.com/letta-ai/lettabot#voice-messages'
               });
             }
           } else {
