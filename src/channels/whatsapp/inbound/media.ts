@@ -65,10 +65,11 @@ export async function collectAttachments(params: {
   chatId: string;
   messageId: string;
   downloadContentFromMessage: (message: any, type: string) => Promise<AsyncIterable<Uint8Array>>;
+  sock: import("@whiskeysockets/baileys").WASocket;
   attachmentsDir?: string;
   attachmentsMaxBytes?: number;
 }): Promise<{ attachments: InboundAttachment[]; caption?: string; voiceTranscription?: string }> {
-  const { messageContent, chatId, messageId, downloadContentFromMessage, attachmentsDir, attachmentsMaxBytes } = params;
+  const { messageContent, chatId, messageId, downloadContentFromMessage, sock, attachmentsDir, attachmentsMaxBytes } = params;
   const attachments: InboundAttachment[] = [];
 
   if (!messageContent) return { attachments };
@@ -161,27 +162,37 @@ export async function collectAttachments(params: {
     try {
       const { isTranscriptionConfigured } = await import('../../../transcription/index.js');
       if (!isTranscriptionConfigured()) {
-        voiceTranscription = 'Voice messages require a transcription API key. See: https://github.com/letta-ai/lettabot#voice-messages';
+        // Send error message directly to user (matches Telegram/Slack/Discord/Signal behavior)
+        try {
+          await sock.sendMessage(chatId, {
+            text: 'Voice messages require a transcription API key. See: https://github.com/letta-ai/lettabot#voice-messages'
+          });
+        } catch (sendError) {
+          console.error('[WhatsApp] Failed to send transcription error message:', sendError);
+        }
+        // Don't forward error to agent - return early
+        const caption = mediaMessage.caption as string | undefined;
+        return { attachments, caption };
+      }
+
+      // Download audio buffer for transcription
+      const stream = await downloadContentFromMessage(mediaMessage, mediaType);
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+
+      // Transcribe audio
+      const { transcribeAudio } = await import('../../../transcription/index.js');
+      const result = await transcribeAudio(buffer, name);
+
+      if (result.success && result.text) {
+        console.log(`[WhatsApp] Transcribed voice message: "${result.text.slice(0, 50)}..."`);
+        voiceTranscription = `[Voice message]: ${result.text}`;
       } else {
-        // Download audio buffer for transcription
-        const stream = await downloadContentFromMessage(mediaMessage, mediaType);
-        const chunks: Uint8Array[] = [];
-        for await (const chunk of stream) {
-          chunks.push(chunk);
-        }
-        const buffer = Buffer.concat(chunks);
-
-        // Transcribe audio
-        const { transcribeAudio } = await import('../../../transcription/index.js');
-        const result = await transcribeAudio(buffer, name);
-
-        if (result.success && result.text) {
-          console.log(`[WhatsApp] Transcribed voice message: "${result.text.slice(0, 50)}..."`);
-          voiceTranscription = `[Voice message]: ${result.text}`;
-        } else {
-          console.error(`[WhatsApp] Transcription failed: ${result.error}`);
-          voiceTranscription = `[Voice message - transcription failed: ${result.error}]`;
-        }
+        console.error(`[WhatsApp] Transcription failed: ${result.error}`);
+        voiceTranscription = `[Voice message - transcription failed: ${result.error}]`;
       }
     } catch (error) {
       console.error('[WhatsApp] Error transcribing voice message:', error);

@@ -149,6 +149,7 @@ export async function extractInboundMessage(
       messageContent,
       chatId: remoteJid,
       messageId: messageId || 'unknown',
+      sock,
       ...attachmentConfig,
     });
     attachments = result.attachments;
